@@ -1,0 +1,303 @@
+---
+title: "Analysis of Time Series-An Introduction"
+output: 
+  html_document:
+    toc: yes
+    toc_depth: 3
+    css: ../../style.css
+params:
+  date: !r Sys.Date()      
+---
+
+```{r, message=FALSE, warning=FALSE}
+library(data.table)
+library(here)
+library(hms)
+library(ggplot2)
+library(grid)
+library(gtable)
+library(tseries)
+library(TSstudio)
+library(lubridate)
+library(RtsaPkg)
+library(RplotterPkg)
+
+current_dir <- here::here("Analysis of Time Series-An Introduction")
+```
+
+```{r,setup, include=FALSE, eval=TRUE}
+options(knitr.table.format = "html")
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.width = 12, fig.height = 8)
+```
+
+<div>Author: Rick Dean</div>
+<div>Article date: `r params$date`</div>
+
+<div class="abstract">
+  <p class="abstract">Abstract</p>
+The following notes/scripts/plots are inspired by the book [The Analysis of Time Series: An Introduction](http://www.ams.sunysb.edu/~xing/tsRbook/index.html) by Chris Chatfield and Haipeng Xing
+</div>
+
+Note that sections were skipped that did not have any scripting/plotting requirements.
+
+# Some Representative Time Series
+## Classic Beveridge wheat price index series
+1. Info on the classic Beveridge wheat price index series `tseries::bev`:
+
+```{r}
+data(bev, package = "tseries") # set the data
+
+is.ts(bev)
+length(bev)
+head(bev, 10)
+head(stats::time(bev), 10)
+head(stats::cycle(bev), 10)
+stats::frequency(bev)
+stats::deltat(bev)
+stats::start(bev)
+stats::end(bev)
+```
+2. Summary of the `tseries::bev` data set:
+```{r}
+TSstudio::ts_info(bev)
+```
+3. Convert the `tseries::bev` time series object (class = "ts") to a data.frame/data.table:
+```{r}
+wheat_index_dt <- RtsaPkg::ts_to_df(bev, col_name = "PriceIdx")
+str(wheat_index_dt)
+```
+4. Plot the Beveridge wheat price index series:
+```{r}
+RplotterPkg::create_scatter_plot(
+    df = wheat_index_dt,
+    aes_x = "DateTime",
+    aes_y = "PriceIdx",
+    title = "Beveridge Wheat Price Index",
+    subtitle = "1500 to 1869",
+    x_title = "Year",
+    y_title = "Price Index",
+    rot_y_tic_label = TRUE,
+    pts_size = 0.7,
+    pts_color = "purple",
+    x_limits = as.Date(c("1499-01-01", "1870-01-01")),
+    x_major_breaks = seq.Date(from = as.Date("1450-1-1"), to = as.Date("1900-1-1"), by = "50 year"),
+    x_date_labels = "%Y",
+    y_limits = c(0, 500),
+    show_pts = FALSE,
+    connect = TRUE
+)
+```
+
+## Closing prices of S&P 500 index
+1. Read the csv file with closing prices from Jan 4, 1995 to Dec 30, 2016:
+```{r}
+apath <- file.path(current_dir, "data", "sp500_1995-2016.csv")
+s_p_500_dt <- data.table::fread(apath)
+str(s_p_500_dt)
+```
+2. Convert `Date` variable from character to date type.
+```{r}
+s_p_500_dt[, Date_alt := as.Date(Date, format = "%m/%d/%y")]
+str(s_p_500_dt)
+```
+3. Plot the series:
+```{r, fig.width=12}
+RplotterPkg::create_scatter_plot(
+    df = s_p_500_dt,
+    aes_x = "Date_alt",
+    aes_y = "Return",
+    x_limits = as.Date(c("1995-01-01", "2017-01-01")),
+    x_major_date_breaks = "2 year",
+    x_date_labels = "%b %Y",
+    title = "S & P 500 Closing Index",
+    subtitle = "Jan 4, 1995 to Dec 30, 2016",
+    x_title = "Day",
+    y_title = "Daily Return",
+    rot_y_tic_label = TRUE,
+    pts_size = 0.7,
+    pts_color = "purple",
+    show_pts = FALSE,
+    connect = TRUE
+)
+```
+
+## Air temperature in Anchorage, Alaska
+1. Read in the csv file of monthly average air temperature in Anchorage, Alaska from 2001 to 2016:
+```{r, message=FALSE}
+apath <- file.path(current_dir, "data", "alaska_temp_1951-2016.csv")
+alaska_temps_dt <- data.table::fread(apath)
+str(alaska_temps_dt)
+```
+2. Convert the `Date` variable to a Date variable:
+```{r}
+alaska_temps_dt[, Date_alt := paste(substring(as.character(Date), 1, 4), substring(as.character(Date), 5, 6), "01", sep = "-")]
+alaska_temps_dt[, Date_alt := as.Date(Date_alt)]
+str(alaska_temps_dt)
+```
+3. Plot the Alaska temperatures starting in 2001:
+```{r}
+RplotterPkg::create_scatter_plot(
+  df = alaska_temps_dt,
+  aes_x = "Date_alt",
+  aes_y = "Celsius",
+  title = "Monthly Average Temperature in Anchorage, Alaska",
+  subtitle = "Jan 1, 2001 to Dec 31, 2016 (deg C)",
+  x_title = "Date",
+  y_title = "Average Temperature",
+  rot_y_tic_label = TRUE,
+  pts_size = 0.7,
+  pts_color = "purple",
+  x_limits = as.Date(c("2001-01-01", "2016-12-31")),
+  x_major_date_breaks = "1 year",
+  x_date_labels = "%Y",
+  show_pts = FALSE,
+  connect = TRUE
+)
+```
+
+## Domestic sales of Australian wine
+1. Read the csv file of Australian wine in successive quarters from March 1985 to June 2014:
+
+```{r, message=FALSE}
+apath <- file.path(current_dir, "data", "aus_wine_sales.csv")
+wine_sales_dt <- data.table::fread(apath)
+str(wine_sales_dt)
+```
+2. Rename the variables:
+```{r}
+wine_sales_dt <- wine_sales_dt[, .(DateChr = V1, Sales = V2)]
+str(wine_sales_dt)
+```
+3. Add a `Date` type column:
+```{r}
+wine_sales_dt[, Date_alt := paste(substring(DateChr, 5, 8), substring(DateChr, 1, 3), "01", sep = "-")]
+wine_sales_dt[, Date_alt := as.Date(Date_alt, format = "%Y-%b-%d")]
+str(wine_sales_dt)
+```
+3. Plot the wine sales:
+```{r, fig.width=12}
+RplotterPkg::create_scatter_plot(
+  df = wine_sales_dt,
+  aes_x = "Date_alt",
+  aes_y = "Sales",
+  title = "Domestic Sales of Australian Wine",
+  subtitle = "March 1985 to June 2014 by quarter",
+  x_title = "Date",
+  rot_y_tic_label = TRUE,
+  pts_size = 0.7,
+  pts_color = "purple",
+  x_limits = as.Date(c("1985-01-01", "2015-01-01")),
+  x_major_date_breaks = "2 year",
+  x_date_labels = "%Y",
+  connect = TRUE
+)
+```
+
+## Total population and birth rate for the US
+1. Read the csv file of total population and birth rate for the US from 1965 to 2015:
+```{r, message=FALSE}
+apath <- file.path(current_dir, "data", "US_pop_birthrate.csv")
+birth_pop_dt <- data.table::fread(apath)
+str(birth_pop_dt)
+```
+2. Rename variables:
+```{r}
+birth_pop_dt <-  birth_pop_dt[, .(DateChr = DATE, Population = populaton, BirthRate = `birthrate(per1000)`)]
+str(birth_pop_dt)
+```
+3. Add a `Date` type:
+```{r}
+birth_pop_dt[,`:=`(Year_alt = lubridate::parse_date_time2(DateChr, "m/d/y", cutoff_2000 = 16L), Population = Population/10000000)]
+str(birth_pop_dt)
+```
+4. Put the series into a "long" form where *Population* and *BirthRate* are separate observations:
+```{r}
+birth_pop_dt <- data.table::melt(birth_pop_dt, measure.vars = c("Population", "BirthRate"), variable.name = "Measure", value.name = "Value")
+str(birth_pop_dt)
+```
+4. Create separate plots for  *BirthRate* and *Population* across *Year_alt*:
+```{r,fig.height=8, fig.width=12}
+plot_birth_pop <- RplotterPkg::multi_scatter_plot(
+  df = birth_pop_dt,
+  factor_var = "Measure",
+  factor_x = "Year_alt",
+  columns = 1,
+  aes_y = "Value",
+  title = "Total Yearly BirthRate/Population for the US",
+  subtitle = "(Pop x 10 million) 1960 to 2015",
+  x_title = "Year",
+  y_titles = c("Rate", "Pop"),
+  rot_y_tic_label = TRUE,
+  pts_color = "violet",
+  pts_fill = "blue",
+  pts_size = 0.7,
+  x_major_breaks = seq(from = as.POSIXct("1960-01-01"), to = as.POSIXct("2016-12-31"), by = "4 year"),
+  x_date_labels = "%Y",
+  show_pts = FALSE,
+  connect = TRUE,
+  row_height = 3,
+  col_width = 11
+)
+```
+
+## Prices and volumes of IBM stocks
+1. Read the transaction prices and volumes of IBM stocks:
+```{r, message=FALSE}
+apath <- file.path(current_dir, "data", "taq_trade_ibm_100104.txt")
+ibm_trade_dt <- data.table::fread(apath)
+str(ibm_trade_dt)
+```
+2. Rename columns:
+```{r}
+ibm_trade_dt <- ibm_trade_dt[, .(Time = V1, Price = V2, G127 = V3, Corr = V4, Cond = V5, Ex = V6, Size = V7)]
+str(ibm_trade_dt)
+```
+3. Convert the time:
+```{r}
+ibm_trade_dt[, `:=`(Time_alt = hms::as_hms(Time), Size = Size/10)]
+str(ibm_trade_dt)
+```
+4. Filter the time for 3 minutes between 09:35:00 to 09:38:00:
+```{r}
+ibm_trade_3min_dt <- ibm_trade_dt[Time_alt > as_hms("09:35:00") & Time_alt < as_hms("09:38:00")]
+str(ibm_trade_3min_dt)
+```
+5. Separate plots of *Price* and *Size*:
+```{r, fig.width=12, fig.height=10}
+price_plot <- RplotterPkg::create_stick_plot(
+  df = ibm_trade_3min_dt,
+  base_val = 131.4,
+  aes_x = "Time_alt",
+  aes_y = "Price",
+  title = "IBM Prices",
+  x_title = "Time",
+  y_title = "Stock Price",
+  y_limits = c(131.4, 132),
+  y_major_breaks = seq(131.4,132,0.2),
+  show_minor_grids = FALSE,
+  x_date_labels = "%H-%M-%S"
+)
+volume_plot <- RplotterPkg::create_stick_plot(
+  df = ibm_trade_3min_dt,
+  aes_x = "Time_alt",
+  aes_y = "Size",
+  title = "IBM Volume",
+  x_title = "Time",
+  y_title = "Stock Volume",
+  x_date_labels = "%H-%M-%S"
+)
+
+layout <- list(
+  plots = list(price_plot, volume_plot),
+  rows = c(1,2),
+  cols = c(1,1)
+)
+
+stock_plot <- RplotterPkg::multi_panel_grid(
+  layout = layout,
+  col_widths = 10,
+  row_heights = c(4,4),
+  title = "IBM Transaction Prices and Volume (x10)",
+  subtitle = "09:35:00 - 09:38:00",
+)
+```

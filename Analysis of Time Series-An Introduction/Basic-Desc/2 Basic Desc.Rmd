@@ -1,0 +1,238 @@
+---
+title: "Analysis of Time Series-An Introduction"
+output: 
+  html_document:
+    toc: yes
+    toc_depth: 3
+    css: ../../style.css
+params:
+  date: !r Sys.Date()      
+---
+
+```{r, message=FALSE, warning=FALSE}
+library(data.table)
+library(here)
+library(ggplot2)
+library(grid)
+library(gtable)
+library(tseries)
+library(RtsaPkg)
+library(RplotterPkg)
+
+current_dir <- here::here("Analysis of Time Series-An Introduction")
+```
+
+```{r,setup, include=FALSE, eval=TRUE}
+options(knitr.table.format = "html")
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width = 12, fig.height = 8)
+```
+
+<div>Author: Rick Dean</div>
+<div>Article date: `r params$date`</div>
+
+<div class="abstract">
+  <p class="abstract">Abstract</p>
+The following notes/scripts/plots are inspired by the book [The Analysis of Time Series: An Introduction](http://www.ams.sunysb.edu/~xing/tsRbook/index.html) by Chris Chatfield and Haipeng Xing
+</div>
+
+# 2 Basic Descriptive Techniques
+
+## 2.5 Series that contain a trend and no seasonal variation
+
+### 2.5.2 Filtering
+<div class="task">
+  Task: Obtain the Beveridge wheat price data set and plot it. Note that the data set `bev` is a time series object of class "ts".
+</div>
+
+```{r}
+data(bev, package = "tseries") # set the data
+str(bev)
+```
+<div class="task">Task: Plot the `bev` data set. </div>
+1. Convert the `bev` time series object (class = "ts") to a data.frame using `RtsaPkg::ts_to_df()`:
+```{r}
+wheat_index_dt <- RtsaPkg::ts_to_df(bev, col_name = "PriceIdx")
+str(wheat_index_dt)
+```
+2. Call `RplotterPkg::create_scatter_plot()` to define a scatter plot of `bev`:
+```{r, fig.width=10, fig.height=10}
+wheat_index_plot <- RplotterPkg::create_scatter_plot(
+    df = wheat_index_dt,
+    aes_x = "DateTime",
+    aes_y = "PriceIdx",
+    title = "Beveridge Wheat Prices",
+    x_title = "Year",
+    y_title = "Index",
+    connect = TRUE
+)
+```
+3. Call `RtsaPkg::graph_ma()`to define a simple moving average plot:
+```{r, fig.width=10, fig.height=6}
+wheat_index_sma <- RtsaPkg::graph_ma(
+  wheat_index_dt, 
+  time_col = "DateTime",
+  value_col = "PriceIdx", 
+  title = "Beveridge Wheat Prices",
+  subtitle = "Simple Moving Average (window = 7)",
+  window_n = 7,
+  x_axis_title = "Year",
+  y_axis_title = "Index",
+  show_pts = FALSE,
+  palette_colors = c("black","red"))
+```
+4. Call `RtsaPkg::graph_ma()`to define a weighted moving average plot:
+```{r, fig.width=10, fig.height=6 }
+wheat_index_weighted <- RtsaPkg::graph_ma(
+  df = wheat_index_dt, 
+  time_col = "DateTime",
+  value_col = "PriceIdx",
+  ma_type = "wma",
+  window_n = 7,
+  title = "Beveridge Wheat Prices",
+  subtitle = "Weighted Moving Average (window = 7)",
+  x_axis_title = "Year",
+  y_axis_title = "Index",
+  show_pts = FALSE,
+  palette_colors = c("black","red")
+)
+```
+5. Combine the plots *wheat_index_plot*, *wheat_index_sma*, *wheat_index_weighted* into a single plot:
+```{r, fig.width=10,fig.height=12}
+layout <- list(
+  plots = list(wheat_index_plot, wheat_index_sma$plots, wheat_index_weighted$plots),
+  rows = c(1,2,3),
+  cols = c(1,1,1)
+)
+multi_plot <- RplotterPkg::multi_panel_grid(
+  layout = layout,
+  col_widths = 10,
+  row_heights = c(3.5,3.5,3.5),
+  title = "Beveridge Wheat Prices",
+  subtitle = "Moving Average Smoothing 1500 to 1869"
+)
+```
+
+## 2.6 Series that contain a trend and seasonal variation
+
+<div class="task">
+  Task: Decompose the quarterly domestic sales of Australian wine time series into seasonal, trend, and irregular components by calling `RtsaPkg::graph_decompose()`.</div>  
+1. Read in the data:
+```{r, message=FALSE}
+apath <- file.path(current_dir, "data", "aus_wine_sales.csv")
+wine_sales_dt <- data.table::fread(apath)
+str(wine_sales_dt)
+```
+2. Rename the variables:
+```{r}
+wine_sales_dt <- wine_sales_dt[, .(DateChr = V1, Sales = V2)]
+str(wine_sales_dt)
+```
+3. Add a `Date` type column:
+```{r}
+wine_sales_dt[, Date_alt := paste(substring(DateChr, 5, 8), substring(DateChr, 1, 3), "01", sep = "-")]
+wine_sales_dt[, Date_alt := as.Date(Date_alt, format = "%Y-%b-%d")]
+str(wine_sales_dt)
+```
+4. Convert `wine_sales_dt` to a time series object:
+```{r}
+wine_sales_ts <- ts(data = wine_sales_dt$Sales, frequency = 4, start = c(1985, 2))
+str(wine_sales_ts)
+```
+5. Call `RtsaPkg::graph_decompose()` and return both the original, seasonal, trend, random values and their associated plots:
+```{r, fig.width=12,fig.height=11}
+wine_sales_decomposed <- RtsaPkg::graph_decompose(
+    series_ts = wine_sales_ts,
+    title = "Decomposed Time Series of Domestic Sales of Australian Wine",
+    subtitle = "June 1985 to June 2014 by quarter",
+    x_title = "Year",
+    y_title = "Sales",
+    x_major_date_breaks = "2 year",
+    x_date_labels = "%Y"
+)
+```
+
+## 2.7 Autocorrelation and the Correlogram
+### 2.7.2 Interpreting the correlogram
+<div class="task">
+  Task: Create a random series and plot both the series and its correlogram using `RtsaPkg::graph_acf()`.
+</div>  
+
+1. Create a series data frame from a random normal distribution and plot the autocorrelation (ACF) and partial autocorrelation (PACF):
+```{r}
+set.seed(1)
+random_df <- data.frame (
+  time = seq(1:400),
+  value = rnorm(400)
+)
+```
+2. Create the plot:
+```{r,fig.width=10,fig.height=11}
+acf_random <- RtsaPkg::graph_acf(
+  df = random_df,
+  time_col = "time",
+  value_col = "value",
+  title = "Random Series and Autocorrelations",
+  x_title = "Index",
+  y_title = "Random Value",
+  confid_level = 1.96,
+  row_height = 3.5
+)
+```
+<div class="note">The acf's hover around zero and don't pass the 95% confidence level.</div>
+
+<div class="task">Task: Plot the autocorrelation from a series that has a trend and is non-stationary.</div>
+
+1. Create the non-stationary series:
+```{r}
+set.seed(1)
+# set up the plot dataframe
+nonstat_df <- data.frame(
+  time = seq(1:400),
+  value = cumsum(rnorm(400))
+)
+```
+
+2. Plot the trending non-stationary series:
+```{r,fig.width=10,fig.height=11}
+acf_nonstat <- RtsaPkg::graph_acf(
+  df = nonstat_df,
+  time_col = "time",
+  value_col = "value",
+  title = "Non-stationary Random Time Series",
+  x_title = "Index",
+  y_title = "Non-stat Value",
+  confid_level = 1.96,
+  row_height = 3.5
+)
+```
+<div class="note">Appears that the lag at 1 is significant.</div>
+
+<div class="task">Task: Plot the autocorrelation of monthly observations on air temperaature in Anchorage, Alaska.</div>
+
+1. Read the csv file:
+```{r, message=FALSE}
+apath <- file.path(current_dir, "data", "alaska_temp_1951-2016.csv")
+alaska_temps_dt <- data.table::fread(apath)
+str(alaska_temps_dt)
+```
+2. Convert the `Date` variable to a Date variable:
+```{r}
+alaska_temps_dt[, Date_alt := paste(substring(as.character(Date), 1, 4), substring(as.character(Date), 5, 6), "01", sep = "-")]
+alaska_temps_dt[, Date_alt := as.Date(Date_alt)]
+str(alaska_temps_dt)
+```
+3. Plot the autocorrelation:
+```{r, fig.width=10, fig.height=11}
+acf_alaska <- RtsaPkg::graph_acf(
+  df = alaska_temps_dt,
+  time_col = "Date_alt",
+  value_col = "Celsius",
+  title = "Autocorrelation for Monthly Alaska Air Tempertures",
+  x_title = "Year",
+  y_title = "Temperture degC",
+  obs_x_major_date_breaks = "10 year",
+  obs_x_date_labels = "%Y",
+  confid_level = 1.96,
+  row_height = 3.5
+)
+```

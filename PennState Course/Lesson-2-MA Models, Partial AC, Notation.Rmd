@@ -1,0 +1,312 @@
+---
+title: "Lesson 2: MA Models, Partial ACF, Notation"
+output: 
+   html_document:
+    toc: yes
+    toc_depth: 3
+    theme: darkly
+    highlight: default
+    css: ../style.css
+params:
+  date: !r Sys.Date()      
+---
+
+```{r, message = FALSE, warning = FALSE}
+library(here)
+library(ggplot2)
+library(data.table)
+library(modelr)
+library(TSstudio)
+library(RplotterPkg)
+library(RtsaPkg)
+
+current_dir <- here::here("PennState Course")
+```
+
+```{r,setup, include=FALSE, eval=TRUE}
+options(knitr.table.format = "html", width = 200)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.width = 12, fig.height = 8)
+```
+
+<div>Author: Rick Dean</div>
+<div>Article date: `r params$date`</div>
+
+<div class="abstract">
+  <p class="abstract">Abstract</p>
+The following notes, scripts, and plots are following the [Lesson 2: MA Models, Partial ACF](https://online.stat.psu.edu/stat510/lesson/2).
+</div>
+
+## 2.1 Moving Average Models (MA models)
+
+Time series models known as ARIMA models may include **autoregressive** terms and/or **moving average** terms.
+
+A **moving average** term in a time series is a past error multiplied by a coefficient.
+
+Let the errors $w_t \overset{iid}\backsim N(0,\sigma_w^2)$ (i.e. $w_t$ is identically, independently distributed, each with a normal distribution having mean 0 and the same variance)
+
+The $1^{st}$ order moving average MA(1): 
+$$x_t = \mu + w_t + \theta_1w_{t-1}$$
+The $q^{th}$ order moving average MA(q):
+$$x_t = \mu + w_t + \theta_1w_{t-1} + ... + \theta_qw_{t-q}$$
+<div class="note">Note: Some textbooks define the model with negative signs before $\theta$ terms.</div>
+
+### 2.1.1 Theoretical properties of a time series with an MA(1) model
+
+* Mean is $E(x_t) = \mu$
+* Variance is $Var(x_t) = \sigma_w^2(1 + \theta_1^2)$
+* Autocorrelation function (ACF) is:
+
+$\rho_1 = \theta_1/(1 + \theta_1^2)$, and  $\rho_h = 0$ for $h \geq 2$
+
+<div class="note">Note: The only nonzero value in the theoretical ACF is for lag 1. All other autocorrelations are 0. Thus 
+a sample ACF with a significant autocorrelation only at lag 1 is an indicator of a possible MA(1) model.</div>
+
+<div class="task">Task: Simulate a MA(1) series with $\theta = 0.7$ and plot the ACF.</div>  
+
+<div class="note">Note: We should be looking for: $\rho_1 \approx 0.7/(1 + 0.7^2) = 0.4698$ at lag 1.</div>
+
+1. Create the series and data.frame:
+```{r}
+ma_1_sim <- stats::arima.sim(list(ma = c(0.7)), n = 1000)
+
+ma_1_sim_dt <- RtsaPkg::ts_to_df(ma_1_sim, col_name = "MA")
+ma_1_sim_dt[, MA := MA + 10]
+ma_1_sim_mean <- mean(ma_1_sim_dt$MA)
+str(ma_1_sim_dt)
+```
+
+2. Plot the series' ACF:
+```{r,fig.width=10, fig.height=6}
+ma_1_acf <- RtsaPkg::graph_acf(
+  df = ma_1_sim_dt,
+  time_col = "DateTime",
+  value_col = "MA",
+  max_lag = 10,
+  title = "ACF for a Simulated MA(1) time series",
+  subtitle = "Theta_1 = 0.7",
+  ac_y_limits = c(-0.4,0.6),
+  ac_y_major_breaks = seq(-0.4,0.6,0.1),
+  show_obs = FALSE,
+  show_pc = FALSE,
+  bold_y = 0.0,
+  confid_level = 1.96,
+  show_minor_grids = FALSE,
+  row_height = 4
+)
+```
+
+The first five lag values:
+```{r}
+ma_1_acf$acf_df[1:5,]
+```
+<div class="note">Note: The non-uniqueness of connection between values $\theta_1$ and $\rho_1$ in MA(1) model:</div>
+In the MA(1) model, for any value of $\theta_1$, the reciprocal of $1/\theta_1$ gives the same value for:
+$$\rho_1 = \theta_1/(1 + \theta_1^2)$$
+
+As an example use 0.5 for $\theta_1$, then use 1/(0.5) = 2 for $\theta_1$. You'll get $\rho_1 = 0.4$ in both instances.
+To satisfy a theoretical restriction called **invertibility** we restrict MA(1) models to have values with absolute
+value less than 1. A value $\theta_1 = 2$ is not allowable.
+
+<div class="task">Task: Plot the simulated MA(1) data.</div>  
+```{r, fig.width=12, fig.height=8}
+RplotterPkg::create_scatter_plot(
+  df = ma_1_sim_dt,
+  aes_x = "DateTime",
+  aes_y = "MA",
+  title = "Simulated MA(1) time series data",
+  x_title = "Index",
+  connect = TRUE,
+  show_pts = FALSE
+)
+```
+
+### 2.1.2 Theoretical properties of a time series with an MA(2) model
+
+For the MA(2) model, theoretical properties are the following:
+
+* Mean is $E(x_t) = \mu$
+* Variance is $Var(x_t) = \sigma_w^2(1 + \theta_1^2 + \theta_2^2)$
+* Autocorrelation function (ACF) is:
+
+$$\rho_1 = (\theta_1 + \theta_1\theta_2)/(1 + \theta_1^2 + \theta_2^2)$$
+$$\rho_2 = \theta_2/(1 + \theta_1^2 + \theta_2^2)$$
+and $\rho_h = 0$ for $h \ge 3$
+
+<div class="note">Note: The only nonzero values in the theoretical ACF are for lags 1 and 2.  Autocorrelations for higher lags are 0.</div>
+
+<div class="task">Task: Consider the MA(2) model $x_t = 10 + w_t + 0.5w_{t-1} + 0.3w_{t-2}$</div>  
+
+The coefficients are $\theta_1 = 0.5$ and $\theta_2 = 0.3$. The theoretical ACF will have nonzero values only at lags 1 and 2.
+We should be looking for:
+$$\rho_1 = (0.5 + 0.5*0.3)/(1 + 0.5^2 + 0.3^2) = 0.4851$$
+$$\rho_2 = 0.3/(1 + 0.5^2 + 0.3^2) = 0.2239$$
+1. Simulate the MA(2) time series:
+
+```{r}
+ma_2_sim <- stats::arima.sim(list(ma = c(0.5,0.3)), n = 1000)
+ma_2_sim_dt <- RtsaPkg::ts_to_df(ma_2_sim, col_name = "MA")
+ma_2_sim_dt[, MA := MA + 10]
+
+ma_2_sim_mean <- mean(ma_2_sim_dt$MA)
+str(ma_2_sim_dt)
+```
+2. Plot the MA(2) ACF:
+```{r,fig.width=10, fig.height=6}
+ma_2_acf <- RtsaPkg::graph_acf(
+  df = ma_2_sim_dt,
+  time_col = "DateTime",
+  value_col = "MA",
+  max_lag = 10,
+  title = "ACF for a Simulated MA(2) time series",
+  subtitle = "Theta_1 = 0.5 Theta_2 = 0.3",
+  ac_y_limits = c(-0.4,0.6),
+  ac_y_major_breaks = seq(-0.4,0.6,0.1),
+  show_obs = FALSE,
+  show_pc = FALSE,
+  bold_y = 0.0,
+  confid_level = 1.96,
+  show_minor_grids = FALSE,
+  row_height = 4
+)
+```
+
+The first five lag values:
+```{r}
+ma_2_acf$acf_df[(1:5),]
+```
+
+### 2.1.3 Infinite Order MA model
+In another lesson we will see that an AR(1) model can be converted to an infinite order MA model.
+
+$$x_t - \mu = w_t + \phi_1w_{t-1} + \phi_1^2w_{t-2} + ... + \phi_1^kw_{t-k} + ... = \sum_{j=0}^\infty\phi_1^jw_{t-j}$$
+
+This summation of past white noise terms is known as the **causal representation** of an AR(1). In other words $x_t$ is a special type of MA with an infinite number of terms going back in time. This is called an infinite MA or $MA(\infty)$.
+
+## 2.2 Partial autocorrelation function (PACF)
+
+For a time series, the partial autocorrelation between $x_t$ and $x_{t-h}$ is defined as the conditional correlation between $x_t$ and $x_{t-h}$, conditional on $x_{t-h+1},...,x_{t-1}$, the set of observations that come **between** the time points $t$ and $t-h$.
+
+### 2.2.1 Some useful facts about PACF and ACF patterns
+
+### 2.2.2 Identification of an AR model is often best done with the PACF
+For an AR model, the theoretical PACF "shuts off" past the order of the model. The number of non-zero partial autocorrelations gives the order of the AR model.
+
+<div class="task">Task: Plot the PACF of earthquake data where an AR(1) model was identified in section 1.1.3</div>  
+1. Re-read the earthquake data:
+
+```{r}
+apath <- file.path(current_dir,"data/quakes.dat")
+quakes_vec <- scan(apath)
+quakes_df <- data.frame(
+  date = seq(from = as.Date("1920-01-01"), by = "year", length.out = 99),
+  data = quakes_vec
+)
+str(quakes_df)
+```
+2. Plot the PACF of the quakes time series:
+```{r, fig.width=13, fig.height=6}
+quakes_pacf <- RtsaPkg::graph_acf(
+  df = quakes_df,
+  time_col = "date",
+  value_col = "data",
+  max_lag = 30,
+  title = "PACF of Earthquake Data",
+  show_obs = FALSE,
+  show_ac = FALSE,
+  pac_y_limits = c(-0.4,0.6),
+  pac_y_major_breaks = seq(-0.4,0.6,0.1),
+  confid_level = 1.96,
+  bold_y = 0.0,
+  show_minor_grids = FALSE,
+  row_height = 4,
+  col_width = 12
+)
+```
+
+The values for the first five lags of the earthquake time series:
+```{r}
+quakes_pacf$acf_df[(1:5),]
+```
+### 2.2.3 Identification of an MA model is often best done with the ACF rather than the PACF
+For an MA model, the theoretical PACF does not shut off, but instead tapers toward 0. See section 2.1.1 above where only the
+first lag of the ACF of a simulated MA(1) series was significant.
+
+<div class="task">Task: Plot the PACF of the simulated MA(1) in section 2.1.1</div>  
+```{r, fig.width=10,fig.height=6}
+ma_1_sim <- stats::arima.sim(list(ma = c(0.7)), n = 1000)
+ma_1_sim_dt <- RtsaPkg::ts_to_df(ma_1_sim, col_name = "MA") 
+ma_1_sim_dt[, MA := MA + 10]
+
+ma_1_pacf <- RtsaPkg::graph_acf(
+  df = ma_1_sim_dt,
+  time_col = "DateTime",
+  value_col = "MA",
+  max_lag = 10,
+  title = "PACF for a Simulated MA(1) time series",
+  subtitle = "Theta_1 = 0.7",
+  show_obs = FALSE,
+  show_ac = FALSE,
+  pac_y_limits = c(-0.4,0.6),
+  pac_y_major_breaks = seq(-0.4,0.6,0.1),
+  bold_y = 0.0,
+  confid_level = 1.96,
+  show_minor_grids = FALSE,
+  row_height = 4
+)
+```
+
+Note that the PACF is showing many significant lags that taper to 0.
+
+## 2.3 Notational Conventions
+
+### 2.3.1 Backshift operator
+Using $B$ before either a value of a series $x_t$ or an error term $w_t$ means to move that element back one time.
+$$Bx_t = x_{t-1}$$
+A "power" of $B$ means to repeatedly apply the backshift in order to move back a number of time periods that equals the "power".
+$$B^2x_t = x_{t-2}$$
+The backshift operator $B$ does not operate on coefficients because they are fixed quantities.
+
+### 2.3.2 AR models and the AR polynomial
+From section 1.1.3 the AR(1) is algebraically:
+$$x_t = \delta + \phi_1x_{t-1} + w_t$$
+where $w_t \overset{iid}{\backsim} N(0,\sigma_w^2)$.
+
+Using the $B$ backshift operator AR(1) can be written:
+$$(1 - \phi_1B)x_t = \delta + w_t$$
+Defining an "AR polynomial" as $\Phi(B) = 1 - \phi_1B$ the model can be written as:
+$$\Phi(B)x_t = \delta + w_t$$
+An AR(2) model is algebraically:
+$$x_t = \delta + \phi_1x_{t-1} + \phi_2x_{t-2} + w_t$$
+Using an "AR polynomial" where:
+$$\Phi(B) = 1 - \phi_1B - \phi_2B^2$$
+Then A(2) in "AR polynomial" form is:
+$$\Phi(B)x_t = \delta +w_t$$
+A shorthand notation for the AR polynomial is $\Phi(B)$ and a general AR model might be written as $\Phi(B)x_t$ where you specify the order of the model on the side.
+
+### 2.3.3 MA Models
+From section 2.1 above the MA(1) model is:
+$$x_t = \mu + w_t + \theta_1w_{t-1}$$
+Or using the backshift operator $B$:
+$$(1 + \theta_1B)w_t = x_t - \mu$$
+Or setting $(1 + \theta_1B)$ as $\Theta(B) called the "MA polynomial" we have:
+$$\Theta(B)w_t = x_t - \mu$$
+where the order of the MA polynomial is 1.
+
+### 2.3.4 Models with both AR and MA terms
+A model that involves both AR and MA might take the form:
+$$\Phi(B)(x_t - \mu) = \Theta(B)w_t$$
+<div class="note">Note: Some textbooks may define the MA polynomial as $(1 - \theta_1B)$ with a negative rather than positive sign.  This does not change the properties of the model.</div>
+
+### 2.3.5 Differencing
+Often differencing is used to account for nonstationarity that occurs in the form of trend and/or seasonality.
+Using the backshift operator $B$ the difference $x_t - x_{t-1}$ can be expressed as $(1 - B)x_t$. 
+
+An alternative notation for difference is:
+$$\nabla = (1 - B)$$
+Thus 
+$$\nabla x_t = (1 - B)x_t = x_t - x_{t-1}$$
+A subscript to $\nabla$ defines a difference of a lag equal to the subscript:
+$$\nabla_{12}x_t = x_t - x_{t-12}$$
+A superscript says to repeat the differencing the specified number of times. For example:
+$$\nabla^2 = (1 - B)^2x_t = (1 - 2B + B^2)x_t = x_t - 2x_{t-1} + x_{t-2}$$
+In words, this is the first difference of the first difference.

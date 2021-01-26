@@ -1,0 +1,249 @@
+---
+title: "Introduction to padr"
+author: "Rick Dean"
+date: "09/05/2020"
+output: 
+   html_document:
+    toc: yes
+    toc_depth: 3
+    code_folding: hide
+---
+
+```{r, warning=FALSE, message=FALSE}
+library(knitr)
+library(padr)
+library(data.table)
+library(ggplot2)
+library(magrittr)
+```
+
+```{r,setup, include=FALSE, eval=TRUE}
+options(knitr.table.format = "html")
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.width = 10, fig.height = 8)
+```
+
+## 1.1 Introduction
+The following scripts are from padr's vignette [Introduction to padr](https://cran.r-project.org/web/packages/padr/vignettes/padr.html).
+
+## 1.2 Modify the coffee data set time stamp in steps
+1. Set coffee data set as data.table:
+```{r}
+coffee_dt <- data.table::setDT(padr::coffee)
+head(coffee_dt)
+```
+2. Thicken the *time_stamp* variable to a higher interval of "day":
+```{r}
+new_coffee_dt <- coffee_dt %>%
+  padr::thicken(interval = "day")
+head(new_coffee_dt)
+```
+3. Pad the *time_stamp_day* variable by filling in missing days:
+```{r}
+new_coffee_dt <- new_coffee_dt %>%
+  padr::pad(by = "time_stamp_day")
+head(new_coffee_dt)
+```
+4. Fill the NA observations with values:
+```{r}
+new_coffee_dt <- new_coffee_dt %>%
+  padr::fill_by_value(amount, value = 0)
+head(new_coffee_dt)
+```
+5. Group *time_stamp_day* variable and aggregate by adding a sum variable:
+```{r}
+new_coffee_grouped_dt <- new_coffee_dt[,.(day_amount = sum(amount)),by = .(time_stamp_day)]
+head(new_coffee_grouped_dt)
+```
+6. Plot the data:
+```{r}
+ggplot(data = new_coffee_grouped_dt, aes(x = time_stamp_day, y = day_amount)) +
+  geom_line()
+```
+
+## 1.3 Specify interval with thicken
+1. Set up the data set:
+```{r}
+day_data_dt <- data.table(day_var = as.Date(c("2016-08-12", "2016-08-13", "2016-08-26", "2016-08-29")))
+head(day_data_dt)
+```
+
+2. Thicken with interval = "week":
+```{r}
+week_data_dt <- day_data_dt %>%
+  padr::thicken(interval = "week")
+head(week_data_dt)
+```
+3. Thicken with interval = "4 days"
+```{r}
+four_day_data_dt <- day_data_dt %>%
+  padr::thicken(interval = "4 days")
+head(four_day_data_dt)
+```
+### 1.3.1 Further refinement using thicken's start_val
+1. Set up the data set:
+```{r}
+emergency_dt <- data.table::setDT(padr::emergency)
+head(emergency_dt)
+```
+2. Filter by title:
+```{r}
+emergency_overdose_dt <- emergency_dt[title == "EMS: OVERDOSE"]
+head(emergency_overdose_dt)
+```
+
+3. Thicken with *interval* = "day" and *start_val* = "2015-12-11 08:00:00":
+```{r}
+emergency_overdose_dt <- emergency_overdose_dt %>%
+  padr::thicken(
+    interval = "day",
+    start_val = as.POSIXct("2015-12-11 08:00:00", tz="EST"),
+    colname = "daystart"
+  )
+head(emergency_overdose_dt, n = 10)
+```
+4. Group by daystart and get a count for each day:
+```{r}
+emergency_overdose_grouped_dt <- emergency_overdose_dt[, .(nr_od = .N), by = .(daystart)]
+head(emergency_overdose_grouped_dt)
+```
+## 1.4 Specify pad
+1. Set up the data set:
+```{r}
+account_data_dt <- data.table(day = as.Date(c("2016-10-21", "2016-10-23", "2016-10-26")),
+                           balance = c(304.46, 414.76, 378.98))
+head(account_data_dt)
+```
+2. Apply *pad()* with interval of day:
+```{r}
+account_data_padded_dt <- account_data_dt %>%
+  pad()
+head(account_data_padded_dt)
+```
+3. Fill NA's with last value:
+```{r}
+data.table::setnafill(account_data_padded_dt, type = "locf", cols = "balance")
+head(account_data_padded_dt)
+```
+4. Specify a lower interval than the one of the variable, using *pad* as the inverse of *thicken*:
+```{r}
+account_data_hour_dt <- account_data_dt %>%
+  padr::pad(interval = "hour", start_val = as.POSIXct("2016-10-20 22:00:00"))
+head(account_data_hour_dt)
+```
+### 1.4.1 Using the grouping argument of *pad*
+1. Set up the data set:
+```{r}
+grouping_dt <- data.table(
+  group = rep(c("A","B"), c(3,3)),
+  date = as.Date(c("2017-10-02", "2017-10-04", "2017-10-06", "2017-10-01", "2017-10-03", "2017-10-04")),
+  value = rep(2,6)
+)
+head(grouping_dt)
+```
+2. Use *pad()* to group with an interval of "day":
+```{r}
+grouping_dt <- grouping_dt %>%
+  pad(group = "group")
+head(grouping_dt, n = 10)
+```
+### 1.4.2 Using fill functions with *pad*
+1. Set up the data set:
+```{r}
+counts_dt <- data.table(x = as.Date(c("2016-11-21", "2016-11-23", "2016-11-24")), y = c(2, 4, 4))
+head(counts_dt)
+```
+
+2. Apply pad and fill NA's (note: interval for *pad()* is "day" and default value is 0):
+```{r}
+counts_filled_dt <- counts_dt %>%
+  padr::pad() %>%
+  padr::fill_by_value(y)
+head(counts_filled_dt)
+```
+3. Fill with a specific value = 42:
+```{r}
+counts_filled_dt <- counts_dt %>%
+  padr::pad() %>%
+  padr::fill_by_value(y,value = 42)
+head(counts_filled_dt)
+```
+4. Fill with the function *mean()*:
+```{r}
+counts_filled_dt <- counts_dt %>%
+  padr::pad() %>%
+  padr::fill_by_function(y,fun = mean)
+head(counts_filled_dt)
+```
+5. Fill by prevalence:
+```{r}
+counts_filled_dt <- counts_dt %>%
+  padr::pad() %>%
+  padr::fill_by_prevalent(y)
+head(counts_filled_dt)
+```
+## 1.5 Formatting functions
+### 1.5.1 Using *center_interval()*
+1. Set up the data set:
+```{r}
+emergency_dt <- data.table::setDT(padr::emergency)
+head(emergency_dt)
+```
+2. Thicken *time_stamp* to a higher interval of "hour":
+```{r}
+emergency_dt <- emergency_dt %>%
+  padr::thicken(interval = "hour", colname = "h")
+head(emergency_dt)
+```
+3. Count the number in each hour:
+```{r}
+emergency_hour_count_dt <- emergency_dt[, .(hour_count = .N), by = .(h)]
+head(emergency_hour_count_dt)
+```
+4. Take the first 24 hours and create a new variable that centers the hours using *center_interval()*:
+```{r}
+emergency_hour_count_dt[1:24, h_center := padr::center_interval(h)]
+head(emergency_hour_count_dt)
+```
+5. Plot on the centered hours:
+```{r}
+ggplot(data = emergency_hour_count_dt, aes(x = h_center, y = hour_count)) +
+  geom_bar(stat = "identity")
+```
+The bars are now between the hours, rather than on the hours.
+
+### 1.5.2 Using *format_interval()*
+1. Set up the data set:
+```{r}
+emergency_dt <- data.table::setDT(padr::emergency)
+emergency_head_dt <- emergency_dt[title == "EMS: HEAD INJURY"]
+head(emergency_head_dt)
+```
+2. Raise the time interval to "6 hour":
+```{r}
+emergency_head_dt <- emergency_head_dt %>% 
+  padr::thicken(interval = "6 hour", colname = "hour6")
+head(emergency_head_dt)
+```
+3. Count the number in each 6 hour interval:
+```{r}
+emergency_head_count_dt <- emergency_head_dt[, .(six_hour_count = .N), by = .(hour6)]
+head(emergency_head_count_dt)
+```
+4. Pad with missing times and fill NA's with 0:
+```{r}
+emergency_head_count_dt <- emergency_head_count_dt %>% 
+  pad() %>% 
+  fill_by_value()
+head(emergency_head_count_dt)
+```
+5. Add variable "hours6_fmt" showing a new time format:
+```{r}
+emergency_head_count_dt[, hours6_fmt := padr::format_interval(x = hour6, start_format = "%Hh", sep = "-")]
+head(emergency_head_count_dt)
+```
+6. Plot the data:
+```{r}
+ggplot(data = emergency_head_count_dt, aes(x = hours6_fmt, y = six_hour_count)) +
+  geom_boxplot()
+```
+

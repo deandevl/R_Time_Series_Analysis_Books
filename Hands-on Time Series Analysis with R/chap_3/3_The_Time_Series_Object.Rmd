@@ -1,0 +1,289 @@
+---
+title: "Hands-on Time Series Analysis with R"
+subtitle: "Chapter 3: The Time Series Object"
+output: 
+  html_document:
+    toc: yes
+    toc_depth: 3
+    css: ../../style.css
+params:
+  date: !r Sys.Date()  
+---
+
+```{r, message=FALSE, warning=FALSE}
+library(knitr)
+library(data.table)
+library(Quandl)
+library(TSstudio)
+library(RplotterPkg)
+library(RtsaPkg)
+current_dir <- here::here("Hands-on Time Series Analysis with R")
+```
+
+```{r,setup, include=FALSE, eval=TRUE}
+options(knitr.table.format = "html")
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.width = 12, fig.height = 8)
+```
+
+<div>Author: Rick Dean</div>
+<div>Article date: `r params$date`</div>
+
+<div class="abstract">
+  <p class="abstract">Abstract</p>
+The following notes/scripts/plots are inspired by chapter 3 of the book [Hands-on Time Series Analysis with R](https://github.com/PacktPublishing/Hands-On-Time-Series-Analysis-with-R) by Rami Krispin
+
+# 3 The Time Series Object
+## 3.1 The Natural Gas Consumption dataset
+Set the Quandl API key:
+```{r}
+Quandl.api_key(RtsaPkg::read_quandl_key())
+```
+Load the "FRED" data:
+```{r}
+NGC_ts <- Quandl(
+  code = "FRED/NATURALGAS",
+  collapse = "quarterly",
+  type = "ts",
+  end_date = "2018-12-31")
+```
+The class and structure of *NGC*:
+```{r}
+class(NGC_ts)
+str(NGC_ts)
+```
+Convert *NGC* to a data frame:
+```{r}
+NGC_dt <- RtsaPkg::ts_to_df(NGC_ts, col_name = "GasConsump")
+str(NGC_dt)
+```
+Plot *NGC*:
+```{r}
+RplotterPkg::create_scatter_plot(
+  df = NGC_dt,
+  aes_x = "DateTime",
+  aes_y = "GasConsump",
+  x_major_date_breaks = "1 year",
+  x_date_labels = "%Y",
+  connect = TRUE,
+  title = "US Quarterly Natural Gas Consumption",
+  x_title = "Time",
+  y_title = "Billion of Cubic Feet",
+  rot_y_tic_label = TRUE
+)
+```
+
+## 3.2 The attributes of the *ts* class
+A "ts" object is composed of two elements--the series values and its corresponding timestamp.  It has several attributes such as the series, cycle, frequency, and the time interval between each consecutive observation.
+We can get the length of "ts" object and apply `head()` to get the values:
+```{r}
+length(NGC_ts)
+head(NGC_ts, n = 32)
+```
+For the NGC dataset, each calendar year is a full cycle and the quarters are the cycle units. By using `stats::cycle()` and `time()` we can see the cycles and time:
+```{r}
+head(stats::cycle(NGC_ts), 32)
+```
+```{r}
+head(stats::time(NGC_ts), 32)
+```
+The timestamp is a decimal number that is aligned with the cycles of the series. The values on the left hand side of the decimal point represent the cycle number (i.e. calendar year) and the values on the right side represent the cycle units.
+
+Getting the series frequency and time interval between the observations:
+```{r}
+stats::frequency(NGC_ts)
+stats::deltat(NGC_ts)
+```
+Using the `stats::start()` and  `stats::end()` functions:
+```{r}
+stats::start(NGC_ts)
+stats::end(NGC_ts)
+```
+
+### 3.2.1 Multivariate time series objects
+The multiple time series object (class: "mts") is a combination of "ts" and "matrix" classes.
+An example of a "mts" object is the `TSstudio::Coffe_Prices` dataset - monthly prices (USD per kg) between 1960 and 2018:
+```{r}
+data(Coffee_Prices)
+RtsaPkg::get_series_info(Coffee_Prices)
+class(Coffee_Prices)
+```
+"mts" inherits from the "matrix" class and contains a matrix like table:
+
+Using *ts* functions on *mts* :
+```{r}
+stats::frequency(Coffee_Prices)
+stats::deltat(Coffee_Prices)
+head(stats::time(Coffee_Prices))
+head(stats::cycle(Coffee_Prices))
+stats::start(Coffee_Prices)
+stats::end(Coffee_Prices)
+```
+Converting an "mts" object to a data frame:
+```{r}
+Coffee_Prices_dt <- RtsaPkg::ts_to_df(Coffee_Prices)
+str(Coffee_Prices_dt)
+```
+
+Prerequisities for merging two "ts" into "mts":
+ 1. Inputs are regular time series
+ 2. Inputs have exactly same frequency or time interval between observations
+ 3. Inputs start at same cycle number and cycle unit
+
+### 3.2.2 Creating a "ts" object
+The `stats::ts()` function allows creating a "ts" object. Example-- create a monthly series with values from 1 to 60 beginning on January 2010.
+Frequency = 12
+Cycle = a year with frequency units of months
+Start = frequency unit 1 (January) with cycle unit 2010
+End = frequency unit 12 (December) with cycle unit 2014
+```{r}
+my_ts_1 <- stats::ts(
+  data = 1:60, # series values
+  start = c(2010,1), # time of the first observation
+  end = c(2014,12), # time of the last observation
+  frequency = 12 # the series frequency
+)
+RtsaPkg::get_series_info(my_ts_1)
+```
+<div class="task">Task: Convert a "data.frame" object (`TSstudio::US_indicators`) to a "ts" object.</div>
+
+```{r}
+data(US_indicators)
+str(US_indicators)
+```
+Convert the *Vehicle Sales* data.frame into a "ts" object package:
+
+Since the input series is monthly we need to define the cycle(year) and frequency(month) units of the first observation.
+ `start = c(1976, 1)`.  We can define a "ts" object by defining the data, the start point and the frequency:
+
+```{r}
+total_vec_sales_ts <- ts(
+  data = US_indicators$`Vehicle Sales`,
+  start = c(1976, 1),
+  frequency = 12
+)
+RtsaPkg::get_series_info(total_vec_sales_ts)
+tail(stats::time(total_vec_sales_ts))
+```
+
+Main limitations of "ts" is that it does not support multiple cycles such as a daily time series which can have both weekdays and yearly cycles.
+Also cannot retrieve original time stamp if is made up more than two elements.  In `total_vec_sales_ts` the day component is lost.
+
+### 3.2.3 Creating a *mts* object
+<div class="task">Task: Join both vehicle sales and unemployment rate series' from *US_indicators* into an "mts" object. </div>
+
+1. Review the data.frame:
+```{r}
+str(US_indicators)
+```
+2. Set the *data*, *start*, and *frequency* as we did above:
+```{r}
+US_indicators_mts <- ts(
+  data = US_indicators[, c("Vehicle Sales", "Unemployment Rate")],
+  start = c(1976, 1),
+  frequency = 12
+)
+RtsaPkg::get_series_info(US_indicators_mts)
+```
+
+### 3.2.4 Setting the series frequency
+Calculation of series freqency can be divided into two groups:
+  * a daily frequency derived from the number of days in calendar year (weeks, hours, minutes in year)
+  * any other frequency not derived from number of days
+
+Create a data.frame with daily time over 10 years:
+```{r}
+daily_dt <- data.table::data.table(
+  date = seq.Date(as.Date("2010-01-01"), length.out = 365 * 10, by = "day"),
+  y = rnorm(365 * 10, mean = 15, sd = 2)
+)
+str(daily_dt)
+```
+We want to create "ts" object with a weekly cycle which suggests a frequency of the series to be set to 7:
+
+```{r}
+days_week_ts <- ts(
+  data = daily_dt$y,
+  start = c(1, lubridate::wday(min(daily_dt$date))),
+  frequency = 7
+)
+RtsaPkg::get_series_info(days_week_ts)
+```
+Note that we used `lubridate::wday()` to extract the day of the week from the first date of the series which appears to be cycle 6 or Saturday.
+
+For a yearly cycle of the daily series we would set the frequency to 365 (ignoring leap year):
+```{r}
+days_year_ts <- ts(
+  data = daily_dt$y,
+  start = c(2010, lubridate::yday(min(daily_dt$date))),
+  frequency = 365
+)
+RtsaPkg::get_series_info(days_year_ts)
+```
+Setting the frequency to 365.25 to smooth the effect of leap year:
+```{r}
+days_year_leap_ts <- ts(
+  data = daily_dt$y,
+  start = c(2010, lubridate::yday(min(daily_dt$date))),
+  frequency = 365.25
+)
+RtsaPkg::get_series_info(days_year_leap_ts)
+```
+
+## 3.3 Data manipulation of ts objects
+
+### 3.3.1 The window function
+The `stats::window()` function subsets a "ts" object based on a time range.
+Use the function to extract the observations of the year 2005 from the NGC series:
+```{r}
+RtsaPkg::get_series_info(NGC_ts)
+window_2005_ts <- stats::window(
+  x = NGC_ts,
+  start = c(2005,1),
+  end = c(2005,4)
+)
+window_2005_ts
+```
+
+Can get a specific frequency unit from the series. Extract all the observations of the series that occurred in the third quarter of the year:
+```{r}
+window_3q_ts <- stats::window(
+  x = NGC_ts,
+  start = c(2000, 3),
+  frequency = 1
+)
+window_3q_ts
+```
+Note: a frequency = 1 sets the output to a yearly series
+```{r}
+str(window_3q_ts)
+```
+
+### 3.3.2 Aggregating ts objects
+The `stats::aggregate()` function is a generic function for aggregating "ts" and "data.frame" objects.
+Use the aggregate "sum" to transform the NGC series from a quarterly to yearly:
+```{r}
+NGC_year_ts <- stats::aggregate(NGC_ts, nfrequency = 1, FUN = "sum")
+NGC_year_ts
+```
+
+### 3.3.3 Creating lags and leads for ts objects
+The `stats::lag()` and `stats::lead()`can be used to create lags and leads.
+Create a seasonal lag of NGC_ts:
+```{r}
+NGC_lag4_ts <- stats::lag(NGC_ts, k = -4)
+RtsaPkg::get_series_info(NGC_lag4_ts)
+```
+
+The first quarter of 2001 is the lag of the corresponding quarter in 2000.
+
+## 3.4 Visualizing ts and mts objects
+
+
+
+
+
+
+
+
+
+
